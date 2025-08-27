@@ -134,7 +134,7 @@ async def holiday_info(date: str = None) -> str:
             is_weekend = date_obj.weekday() >= 5  # 5=周六, 6=周日
             result = {
                 "date": date,
-                "name": "普通日",
+                "name": " ",
                 "type": "normal",
                 "is_holiday": is_weekend,
                 "is_work_day": not is_weekend,
@@ -297,6 +297,193 @@ async def current_year_work_days() -> str:
         logger.error(f"获取当前年份调休工作日失败: {e}")
         return f'{{"error": "查询失败: {str(e)}"}}'  
 
+# 农历转换工具类
+class LunarTools:
+    """农历转换工具类"""
+    
+    # 农历数据
+    LUNAR_DATA = (
+        1198, 2647, 330317, 3366, 3477, 265557, 1386, 2477, 18781, 1198,
+        398491, 2637, 3365, 334501, 2900, 3434, 133485, 2395, 461111, 1175,
+        2635, 333387, 1701, 1748, 267701, 694, 2391, 133423, 1175, 396438,
+        3402, 3749, 331177, 1453, 694, 201326, 2350, 465197, 3221, 3402,
+        400202, 2901, 1386, 267611, 605, 2349, 137515, 2709, 464533, 1738,
+        2901, 330421, 1242, 2651, 199255, 1323, 529706, 3733, 1706, 398762,
+        2741, 1206, 267438, 2647, 1318, 204070, 3477, 461653, 1386, 2413,
+        330077, 1197, 2637, 268877, 3365, 531109, 2900, 2922, 398042, 2395,
+        1179, 267415, 2635, 661067, 1701, 1748, 398772, 2742, 2391, 330031,
+        1175, 1611, 200010, 3749, 527717, 1452, 2742, 332397, 2350, 3222,
+        268949, 3402, 3493, 133973, 1386, 464219, 605, 2349, 334123, 2709,
+        2890, 267946, 2773, 592565, 1210, 2651, 395863, 1323, 2707, 265877,
+        1706, 2773, 18869, 1206, 51799, 2638, 3366, 44691, 3411, 1450,
+        26293, 2413, 92509, 1197, 2637, 55883, 3365, 3410, 44458, 2906,
+        1389, 18779, 1179, 62615, 2635, 2725, 46757, 1746, 2778, 27319
+    )
+    
+    # 天干地支
+    TIAN_GAN = ("甲", "乙", "丙", "丁", "戊", "己", "庚", "辛", "壬", "癸")
+    DI_ZHI = ("子", "丑", "寅", "卯", "辰", "巳", "午", "未", "申", "酉", "戌", "亥")
+    
+    # 生肖
+    ZODIAC = ("鼠", "牛", "虎", "兔", "龙", "蛇", "马", "羊", "猴", "鸡", "狗", "猪")
+    
+    # 农历日期名
+    LUNAR_DAY_NAMES = (
+        "", "初一", "初二", "初三", "初四", "初五", "初六", "初七", "初八", "初九", "初十",
+        "十一", "十二", "十三", "十四", "十五", "十六", "十七", "十八", "十九", "二十",
+        "廿一", "廿二", "廿三", "廿四", "廿五", "廿六", "廿七", "廿八", "廿九", "三十"
+    )
+    
+    # 农历月份名
+    LUNAR_MONTH_NAMES = (
+        "", "正", "二", "三", "四", "五", "六", "七", "八", "九", "十", "十一", "腊"
+    )
+    
+    @staticmethod
+    def gregorian_to_lunar(year, month, day):
+        """公历转农历"""
+        try:
+            # 公历每月前面的天数
+            month_add = (0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334)
+            
+            # 计算到初始时间1901年2月19日的天数：1921-2-19(正月初一)
+            the_date = (year - 1901) * 365 + (year - 1901) // 4 + day + month_add[month - 1] - 38 - 11
+            
+            if the_date <= 0:
+                return None, None, None, False
+            
+            # 闰年处理
+            if (year % 4 == 0) and (month > 2):
+                the_date += 1
+            
+            # 计算农历天干、地支、月、日
+            is_end = False
+            m = 0
+            
+            while not is_end:
+                if LunarTools.LUNAR_DATA[m] < 4095:
+                    k = 11
+                else:
+                    k = 12
+                
+                n = k
+                while n >= 0:
+                    bit = LunarTools.LUNAR_DATA[m]
+                    for i in range(1, n + 1):
+                        bit = bit // 2
+                    bit = bit % 2
+                    
+                    if the_date <= (29 + bit):
+                        is_end = True
+                        break
+                    
+                    the_date = the_date - 29 - bit
+                    n = n - 1
+                
+                if is_end:
+                    break
+                m = m + 1
+            
+            cur_year = 1901 + m
+            cur_month = k - n + 1
+            cur_day = the_date
+            
+            if cur_day < 0:
+                return None, None, None, False
+            
+            # 处理闰月
+            embolism = False
+            if k == 12:
+                if cur_month == LunarTools.LUNAR_DATA[m] // 65536 + 1:
+                    cur_month = 1 - cur_month
+                elif cur_month > LunarTools.LUNAR_DATA[m] // 65536 + 1:
+                    cur_month = cur_month - 1
+            
+            if cur_month < 1:
+                lunar_month = -cur_month
+                embolism = True
+            else:
+                lunar_month = cur_month
+                embolism = False
+            
+            return cur_year, lunar_month, cur_day, embolism
+            
+        except Exception as e:
+            logger.error(f"公历转农历失败: {e}")
+            return None, None, None, False
+    
+    @staticmethod
+    def lunar_to_gregorian(lunar_year, lunar_month, lunar_day, is_leap=False):
+        """农历转公历"""
+        try:
+            # 从农历年份开始，逐日查找对应的公历日期
+            start_date = datetime(lunar_year, 1, 1)
+            
+            for i in range(400):  # 最多查找400天
+                test_date = start_date + timedelta(days=i)
+                lunar_result = LunarTools.gregorian_to_lunar(test_date.year, test_date.month, test_date.day)
+                
+                if (lunar_result[0] == lunar_year and 
+                    lunar_result[1] == lunar_month and 
+                    lunar_result[2] == lunar_day and 
+                    lunar_result[3] == is_leap):
+                    return test_date.year, test_date.month, test_date.day
+            
+            return None, None, None
+            
+        except Exception as e:
+            logger.error(f"农历转公历失败: {e}")
+            return None, None, None
+    
+    @staticmethod
+    def get_lunar_string(year, month, day):
+        """获取农历日期的中文描述"""
+        try:
+            date_str = f"{year:04d}-{month:02d}-{day:02d}"
+            lunar_result = LunarTools.gregorian_to_lunar(year, month, day)
+            
+            if lunar_result[0] is None:
+                return {"error": "无法转换为农历"}
+            
+            lunar_year, lunar_month, lunar_day, is_leap = lunar_result
+            
+            # 生成属相
+            zodiac_index = ((lunar_year - 4) % 60) % 12
+            zodiac = LunarTools.ZODIAC[zodiac_index]
+            
+            # 生成天干地支
+            tian_gan_index = ((lunar_year - 4) % 60) % 10
+            di_zhi_index = ((lunar_year - 4) % 60) % 12
+            tian_gan = LunarTools.TIAN_GAN[tian_gan_index]
+            di_zhi = LunarTools.DI_ZHI[di_zhi_index]
+            
+            # 生成农历月份
+            lunar_month_name = LunarTools.LUNAR_MONTH_NAMES[lunar_month] + "月"
+            if is_leap:
+                lunar_month_name = "闰" + lunar_month_name
+            
+            # 生成农历日期
+            lunar_day_name = LunarTools.LUNAR_DAY_NAMES[lunar_day]
+            
+            return {
+                "gregorian_date": date_str,
+                "lunar_year": lunar_year,
+                "lunar_month": lunar_month,
+                "lunar_day": lunar_day,
+                "is_leap_month": is_leap,
+                "zodiac": zodiac,
+                "year_gan_zhi": tian_gan + di_zhi,
+                "tian_gan": tian_gan,
+                "di_zhi": di_zhi,
+                "lunar_month_name": lunar_month_name,
+                "lunar_day_name": lunar_day_name,
+                "lunar_string": f"{tian_gan}{di_zhi}年 {lunar_month_name} {lunar_day_name}"
+            }
+            
+        except Exception as e:
+            logger.error(f"获取农历字符串失败: {e}")
+            return {"error": f"转换失败: {str(e)}"}
+
 # 农历转换工具
 @mcp.tool()
 async def gregorian_to_lunar(date: str) -> str:
@@ -311,27 +498,29 @@ async def gregorian_to_lunar(date: str) -> str:
             return '{"error": "日期格式错误，请使用YYYY-MM-DD格式"}'
         
         year, month, day = date_obj.year, date_obj.month, date_obj.day
+        lunar_result = LunarTools.gregorian_to_lunar(year, month, day)
         
-        # 这里应该导入农历转换模块，为了简化示例，返回基本信息
-        from .data.bazi_calculator import BaziCalculator
+        if lunar_result[0] is None:
+            return '{"error": "无法转换为农历"}'
         
-        calculator = BaziCalculator()
-        lunar_info = calculator.gregorian_to_lunar(year, month, day)
+        lunar_year, lunar_month, lunar_day, is_leap = lunar_result
         
-        import json
-        return json.dumps(lunar_info, ensure_ascii=False, indent=2)
+        # 生成属相
+        zodiac_index = ((lunar_year - 4) % 60) % 12
+        zodiac = LunarTools.ZODIAC[zodiac_index]
         
-    except ImportError:
-        # 如果模块不存在，返回简化版本
         result = {
             "gregorian_date": date,
-            "lunar_year": year,
-            "lunar_month": month,
-            "lunar_day": day,
-            "note": "农历转换功能需要完整的农历计算模块"
+            "lunar_year": lunar_year,
+            "lunar_month": lunar_month,
+            "lunar_day": lunar_day,
+            "is_leap_month": is_leap,
+            "zodiac": zodiac
         }
+        
         import json
         return json.dumps(result, ensure_ascii=False, indent=2)
+        
     except Exception as e:
         logger.error(f"公历转农历失败: {e}")
         return f'{{"error": "转换失败: {str(e)}"}}'
@@ -350,7 +539,20 @@ async def lunar_to_gregorian(date: str, is_leap: bool = False) -> str:
             return '{"error": "日期格式错误，请使用YYYY-MM-DD格式"}'
         
         year, month, day = date_obj.year, date_obj.month, date_obj.day
-        result = LunarTools.lunar_to_gregorian(year, month, day, is_leap)
+        gregorian_result = LunarTools.lunar_to_gregorian(year, month, day, is_leap)
+        
+        if gregorian_result[0] is None:
+            return '{"error": "无法转换为公历"}'
+        
+        greg_year, greg_month, greg_day = gregorian_result
+        
+        result = {
+            "lunar_date": f"{year}年{LunarTools.LUNAR_MONTH_NAMES[month]}月{LunarTools.LUNAR_DAY_NAMES[day]}",
+            "gregorian_year": greg_year,
+            "gregorian_month": greg_month,
+            "gregorian_day": greg_day,
+            "gregorian_date": f"{greg_year:04d}-{greg_month:02d}-{greg_day:02d}"
+        }
         
         import json
         return json.dumps(result, ensure_ascii=False, indent=2)
@@ -394,7 +596,43 @@ async def get_24_lunar_feast(date: str) -> str:
             return '{"error": "日期格式错误，请使用YYYY-MM-DD格式"}'
         
         year, month = date_obj.year, date_obj.month
-        result = LunarTools.get_24_lunar_feast(year, month)
+        
+        # 导入节气模块
+        try:
+            from .data.solar_terms import get_solar_terms_for_month, get_season_by_solar_term
+        except ImportError:
+            try:
+                from data.solar_terms import get_solar_terms_for_month, get_season_by_solar_term
+            except ImportError:
+                return '{"error": "节气模块未找到"}'
+        
+        # 获取该月份的所有节气
+        month_terms = get_solar_terms_for_month(year, month)
+        
+        # 获取当前日期用于计算倒计时
+        current_date = datetime.now().date()
+        
+        solar_terms_list = []
+        for term_name, term_day in month_terms:
+            term_date = f"{year:04d}-{month:02d}-{term_day:02d}"
+            season = get_season_by_solar_term(term_name)
+            
+            # 计算距离该节气的天数
+            term_date_obj = datetime(year, month, term_day).date()
+            days_until = (term_date_obj - current_date).days
+            
+            solar_terms_list.append({
+                "name": term_name,
+                "date": term_date,
+                "days_until": days_until,
+                "season": season
+            })
+        
+        result = {
+            "year": year,
+            "month": month,
+            "solar_terms": solar_terms_list
+        }
         
         import json
         return json.dumps(result, ensure_ascii=False, indent=2)
@@ -424,7 +662,23 @@ async def get_8zi(date: str, hour: int = 12, minute: int = 0) -> str:
             return '{"error": "分钟必须在0-59之间"}'
         
         year, month, day = date_obj.year, date_obj.month, date_obj.day
-        result = LunarTools.get_8zi(year, month, day, hour)
+        
+        # 导入八字计算模块
+        try:
+            from .data.bazi_calculator import calculate_bazi
+        except ImportError:
+            try:
+                from data.bazi_calculator import calculate_bazi
+            except ImportError:
+                return '{"error": "八字计算模块未找到"}'
+        
+        # 使用八字计算模块
+        bazi_result = calculate_bazi(year, month, day, hour)
+        
+        # 只返回八字字符串
+        result = {
+            "eight_characters": bazi_result["eight_characters"]
+        }
         
         import json
         return json.dumps(result, ensure_ascii=False, indent=2)
