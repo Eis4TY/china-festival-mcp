@@ -197,4 +197,12 @@ env/
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+# Publish related files
+publish.sh
+scripts/publish.py
+.pypirc
+PUBLISH_GUIDE.md
+
+# Test files
 /tests

@@ -6,9 +6,9 @@ from fastmcp import FastMCP
 
 # 导入工具函数
 try:
-    from .utils.logger import setup_logger
-    from .utils.date_utils import get_weekday
-    from .tools.lunar import LunarTools
+    from utils.logger import setup_logger
+    from utils.date_utils import get_weekday
+    from tools.lunar import LunarTools
 except ImportError:
     import logging
     def setup_logger(name):
@@ -193,11 +193,20 @@ async def current_year_holidays() -> str:
         return f'{{"error": "查询失败: {str(e)}"}}'  
 
 @mcp.tool()
-async def next_holiday() -> str:
-    """获取距离当前日期最近的下一个节假日
+async def next_holiday(date: str = None) -> str:
+    """获取距离指定日期最近的下一个节假日
+    date: 起始日期，格式：YYYY-MM-DD，不指定则使用当前日期
     """
     try:
-        today = datetime.now().date()
+        # 如果没有提供日期，默认使用当前日期
+        if not date:
+            today = datetime.now().date()
+        else:
+            # 验证日期格式
+            try:
+                today = datetime.strptime(date, "%Y-%m-%d").date()
+            except ValueError:
+                return '{"error": "日期格式错误，请使用YYYY-MM-DD格式"}'
         current_year = today.year
         
         # 先查找当前年份的节假日
@@ -527,7 +536,7 @@ async def gregorian_to_lunar(date: str) -> str:
 
 @mcp.tool()
 async def lunar_to_gregorian(date: str, is_leap: bool = False) -> str:
-    """农历转公历
+    """农历转公历。用于换算中国传统节日的阳历日期。如查询七夕节是几号，根据经验七夕节固定在农历七月初七，则传入农历日期获取公历日期。
     date: 农历日期，格式：YYYY-MM-DD
     is_leap: 是否为闰月，默认为False
     """
@@ -719,5 +728,9 @@ async def get_weekday(date: str) -> str:
         logger.error(f"获取星期几失败: {e}")
         return f'{{"error": "查询失败: {str(e)}"}}'
 
-if __name__ == "__main__":
+def main():
+    """主入口函数"""
     mcp.run()
+
+if __name__ == "__main__":
+    main()
