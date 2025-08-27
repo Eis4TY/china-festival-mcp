@@ -1,9 +1,3 @@
-"""基于FastMCP的中国节假日MCP服务器
-
-根据官方文档最佳实践重构的服务器实现。
-使用FastMCP简化开发，提供更好的开发体验。
-"""
-
 import asyncio
 import httpx
 from datetime import datetime, timedelta
@@ -14,6 +8,7 @@ from fastmcp import FastMCP
 try:
     from .utils.logger import setup_logger
     from .utils.date_utils import get_weekday
+    from .tools.lunar import LunarTools
 except ImportError:
     import logging
     def setup_logger(name):
@@ -23,6 +18,24 @@ except ImportError:
         date_obj = datetime(year, month, day)
         weekdays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
         return {'weekday_name_en': weekdays[date_obj.weekday()]}
+    
+    # 如果导入失败，创建一个简化的LunarTools类
+    class LunarTools:
+        @staticmethod
+        def lunar_to_gregorian(year, month, day, is_leap=False):
+            return {"error": "农历转换模块未安装"}
+        
+        @staticmethod
+        def get_lunar_string(year, month, day):
+            return {"error": "农历转换模块未安装"}
+        
+        @staticmethod
+        def get_24_lunar_feast(year, month):
+            return {"error": "农历转换模块未安装"}
+        
+        @staticmethod
+        def get_8zi(year, month, day, hour=12):
+            return {"error": "农历转换模块未安装"}
 
 # 设置日志
 logger = setup_logger(__name__)
@@ -68,15 +81,10 @@ async def fetch_holiday_data(year: int) -> Optional[Dict[str, Any]]:
 @mcp.tool()
 async def holiday_info(date: str = None) -> str:
     """查询指定日期的节假日信息，包含是否为节假日的判断
-    
-    Args:
-        date: 查询日期，格式：YYYY-MM-DD，不指定则查询当前日期
-    
-    Returns:
-        包含节假日信息的JSON字符串
+    date: 查询日期，格式：YYYY-MM-DD，不指定则查询当前日期
     """
     try:
-        # 如果没有提供日期，使用当前日期
+        # 如果没有提供日期，默认使用当前日期
         if not date:
             date = datetime.now().strftime("%Y-%m-%d")
         
@@ -144,9 +152,6 @@ async def holiday_info(date: str = None) -> str:
 @mcp.tool()
 async def current_year_holidays() -> str:
     """获取当前年份所有法定节假日
-    
-    Returns:
-        包含当前年份所有节假日的JSON字符串
     """
     try:
         current_year = datetime.now().year
@@ -190,9 +195,6 @@ async def current_year_holidays() -> str:
 @mcp.tool()
 async def next_holiday() -> str:
     """获取距离当前日期最近的下一个节假日
-    
-    Returns:
-        包含下一个节假日信息的JSON字符串
     """
     try:
         today = datetime.now().date()
@@ -255,9 +257,6 @@ async def next_holiday() -> str:
 @mcp.tool()
 async def current_year_work_days() -> str:
     """获取当前年份调休工作日安排
-    
-    Returns:
-        包含当前年份调休工作日的JSON字符串
     """
     try:
         current_year = datetime.now().year
@@ -300,18 +299,19 @@ async def current_year_work_days() -> str:
 
 # 农历转换工具
 @mcp.tool()
-async def gregorian_to_lunar(year: int, month: int, day: int) -> str:
+async def gregorian_to_lunar(date: str) -> str:
     """公历转农历
-    
-    Args:
-        year: 公历年份
-        month: 公历月份 (1-12)
-        day: 公历日期 (1-31)
-    
-    Returns:
-        包含农历信息的JSON字符串
+    date: 公历日期，格式：YYYY-MM-DD
     """
     try:
+        # 验证日期格式
+        try:
+            date_obj = datetime.strptime(date, "%Y-%m-%d")
+        except ValueError:
+            return '{"error": "日期格式错误，请使用YYYY-MM-DD格式"}'
+        
+        year, month, day = date_obj.year, date_obj.month, date_obj.day
+        
         # 这里应该导入农历转换模块，为了简化示例，返回基本信息
         from .data.bazi_calculator import BaziCalculator
         
@@ -324,7 +324,7 @@ async def gregorian_to_lunar(year: int, month: int, day: int) -> str:
     except ImportError:
         # 如果模块不存在，返回简化版本
         result = {
-            "gregorian_date": f"{year}-{month:02d}-{day:02d}",
+            "gregorian_date": date,
             "lunar_year": year,
             "lunar_month": month,
             "lunar_day": day,
@@ -334,29 +334,124 @@ async def gregorian_to_lunar(year: int, month: int, day: int) -> str:
         return json.dumps(result, ensure_ascii=False, indent=2)
     except Exception as e:
         logger.error(f"公历转农历失败: {e}")
-        return f'{{"error": "转换失败: {str(e)}"}}'  
+        return f'{{"error": "转换失败: {str(e)}"}}'
 
 @mcp.tool()
-async def get_weekday(year: int, month: int, day: int) -> str:
-    """获取指定日期是星期几
-    
-    Args:
-        year: 年份
-        month: 月份 (1-12)
-        day: 日期 (1-31)
-    
-    Returns:
-        包含星期几信息的JSON字符串
+async def lunar_to_gregorian(date: str, is_leap: bool = False) -> str:
+    """农历转公历
+    date: 农历日期，格式：YYYY-MM-DD
+    is_leap: 是否为闰月，默认为False
     """
     try:
-        date_obj = datetime(year, month, day)
+        # 验证日期格式
+        try:
+            date_obj = datetime.strptime(date, "%Y-%m-%d")
+        except ValueError:
+            return '{"error": "日期格式错误，请使用YYYY-MM-DD格式"}'
+        
+        year, month, day = date_obj.year, date_obj.month, date_obj.day
+        result = LunarTools.lunar_to_gregorian(year, month, day, is_leap)
+        
+        import json
+        return json.dumps(result, ensure_ascii=False, indent=2)
+        
+    except Exception as e:
+        logger.error(f"农历转公历失败: {e}")
+        return f'{{"error": "转换失败: {str(e)}"}}'
+
+@mcp.tool()
+async def get_lunar_string(date: str) -> str:
+    """获取农历日期的生肖/干支纪年
+    date: 公历日期，格式：YYYY-MM-DD
+    """
+    try:
+        # 验证日期格式
+        try:
+            date_obj = datetime.strptime(date, "%Y-%m-%d")
+        except ValueError:
+            return '{"error": "日期格式错误，请使用YYYY-MM-DD格式"}'
+        
+        year, month, day = date_obj.year, date_obj.month, date_obj.day
+        result = LunarTools.get_lunar_string(year, month, day)
+        
+        import json
+        return json.dumps(result, ensure_ascii=False, indent=2)
+        
+    except Exception as e:
+        logger.error(f"获取农历信息失败: {e}")
+        return f'{{"error": "查询失败: {str(e)}"}}'
+
+@mcp.tool()
+async def get_24_lunar_feast(date: str) -> str:
+    """获取当月的二十四节气信息
+    date: 日期，格式：YYYY-MM-DD
+    """
+    try:
+        # 验证日期格式
+        try:
+            date_obj = datetime.strptime(date, "%Y-%m-%d")
+        except ValueError:
+            return '{"error": "日期格式错误，请使用YYYY-MM-DD格式"}'
+        
+        year, month = date_obj.year, date_obj.month
+        result = LunarTools.get_24_lunar_feast(year, month)
+        
+        import json
+        return json.dumps(result, ensure_ascii=False, indent=2)
+        
+    except Exception as e:
+        logger.error(f"获取节气信息失败: {e}")
+        return f'{{"error": "查询失败: {str(e)}"}}'
+
+@mcp.tool()
+async def get_8zi(date: str, hour: int = 12, minute: int = 0) -> str:
+    """计算八字（四柱）
+    date: 日期，格式：YYYY-MM-DD
+    hour: 小时 (0-23)，默认为12
+    minute: 分钟 (0-59)，默认为0
+    """
+    try:
+        # 验证日期格式
+        try:
+            date_obj = datetime.strptime(date, "%Y-%m-%d")
+        except ValueError:
+            return '{"error": "日期格式错误，请使用YYYY-MM-DD格式"}'
+        
+        # 验证时间参数
+        if not (0 <= hour <= 23):
+            return '{"error": "小时必须在0-23之间"}'
+        if not (0 <= minute <= 59):
+            return '{"error": "分钟必须在0-59之间"}'
+        
+        year, month, day = date_obj.year, date_obj.month, date_obj.day
+        result = LunarTools.get_8zi(year, month, day, hour)
+        
+        import json
+        return json.dumps(result, ensure_ascii=False, indent=2)
+        
+    except Exception as e:
+        logger.error(f"计算八字失败: {e}")
+        return f'{{"error": "计算失败: {str(e)}"}}'
+
+@mcp.tool()
+async def get_weekday(date: str) -> str:
+    """获取指定日期是星期几
+    date: 日期，格式：YYYY-MM-DD
+    """
+    try:
+        # 验证日期格式
+        try:
+            date_obj = datetime.strptime(date, "%Y-%m-%d")
+        except ValueError:
+            return '{"error": "日期格式错误，请使用YYYY-MM-DD格式"}'
+        
         weekdays_cn = ['星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '星期日']
         weekdays_en = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
         
         weekday_index = date_obj.weekday()
         
         result = {
-            "date": f"{year}-{month:02d}-{day:02d}",
+            "date": date,
             "weekday_index": weekday_index + 1,  # 1-7，周一为1
             "weekday_name_cn": weekdays_cn[weekday_index],
             "weekday_name_en": weekdays_en[weekday_index],
@@ -368,7 +463,7 @@ async def get_weekday(year: int, month: int, day: int) -> str:
         
     except Exception as e:
         logger.error(f"获取星期几失败: {e}")
-        return f'{{"error": "查询失败: {str(e)}"}}'  
+        return f'{{"error": "查询失败: {str(e)}"}}'
 
 if __name__ == "__main__":
     mcp.run()
