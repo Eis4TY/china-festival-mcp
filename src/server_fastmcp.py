@@ -265,7 +265,7 @@ async def next_holiday(date: str = None) -> str:
 
 @mcp.tool()
 async def current_year_work_days() -> str:
-    """获取当前年份调休工作日安排
+    """获取当前年份所有因调休导致需要上班上课的原休息日
     """
     try:
         current_year = datetime.now().year
@@ -288,7 +288,7 @@ async def current_year_work_days() -> str:
                 
                 work_days.append({
                     "date": day['date'],
-                    "name": day['name'],
+                    "name": day['name'] + "-需要上班",
                     "note": day.get('note', ''),
                     "weekday_name_en": weekday_name_en
                 })

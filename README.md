@@ -310,7 +310,3 @@ china-festival-mcp/
 ## 🙏 致谢
 
 本项目基于 [PyLunar](https://github.com/swordzjj/PyLunar/tree/master) 项目和 [holiday-cn](https://github.com/NateScarlet/holiday-cn)项目开发，感谢原作者的贡献。
-
-- 感谢所有贡献者
-- 基于传统农历算法和现代计算方法
-- 参考了多个开源农历转换项目

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "china-festival-mcp"
-version = "0.1.6"
+version = "0.1.7"
 description = "中国节假日和农历转换MCP服务器"
 authors = [{name = "China Festival MCP", email = "china-festival-mcp@example.com"}]
 readme = "README.md"

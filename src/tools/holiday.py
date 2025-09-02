@@ -307,7 +307,7 @@ class HolidayTools:
                 if not day.get('isOffDay', False) and day.get('name'):  # 调休工作日
                     work_days.append({
                         "date": day.get('date'),
-                        "name": day.get('name', ''),
+                        "name": day.get('name', '') + "补班",
                         "note": day.get('note', '')
                     })
             
