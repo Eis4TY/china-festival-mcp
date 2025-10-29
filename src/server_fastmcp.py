@@ -47,15 +47,46 @@ mcp = FastMCP("中国节假日MCP服务器")
 PRIMARY_DATA_SOURCE = "https://cdn.jsdelivr.net/gh/NateScarlet/holiday-cn@master/{year}.json"
 BACKUP_DATA_SOURCE = "https://raw.githubusercontent.com/NateScarlet/holiday-cn/master/{year}.json"
 
+# TTL 缓存配置 (7天)
+CACHE_TTL_SECONDS = 7 * 24 * 60 * 60
+
 # 简单的内存缓存
 _holiday_cache: Dict[int, Dict[str, Any]] = {}
+_holiday_cache_ts: Dict[int, float] = {}  # 缓存时间戳
+_refreshing_years: set = set()  # 正在刷新的年份
 
 async def fetch_holiday_data(year: int) -> Optional[Dict[str, Any]]:
-    """获取指定年份的节假日数据"""
-    # 检查缓存
-    if year in _holiday_cache:
-        return _holiday_cache[year]
+    """获取指定年份的节假日数据，支持 TTL 缓存和后台刷新"""
+    import time
     
+    current_time = time.time()
+    
+    # 检查缓存是否存在且未过期
+    if year in _holiday_cache:
+        cache_time = _holiday_cache_ts.get(year, 0)
+        if current_time - cache_time < CACHE_TTL_SECONDS:
+            # 缓存未过期，直接返回
+            return _holiday_cache[year]
+        else:
+            # 缓存过期，触发后台刷新（如果尚未在刷新中）
+            if year not in _refreshing_years:
+                _refreshing_years.add(year)
+                # 启动后台刷新任务
+                asyncio.create_task(_refresh_holiday_data(year))
+            # 返回过期的缓存数据（stale-while-revalidate）
+            return _holiday_cache[year]
+    
+    # 缓存不存在，同步获取数据
+    data = await _fetch_holiday_data_sync(year)
+    if data:
+        _holiday_cache[year] = data
+        _holiday_cache_ts[year] = current_time
+    
+    return data
+
+
+async def _fetch_holiday_data_sync(year: int) -> Optional[Dict[str, Any]]:
+    """同步获取节假日数据的内部函数"""
     # 数据源列表
     urls = [
         PRIMARY_DATA_SOURCE.format(year=year),
@@ -68,8 +99,6 @@ async def fetch_holiday_data(year: int) -> Optional[Dict[str, Any]]:
                 response = await client.get(url, timeout=10)
                 if response.status_code == 200:
                     data = response.json()
-                    # 缓存数据
-                    _holiday_cache[year] = data
                     return data
             except Exception as e:
                 logger.warning(f"从{url}获取数据失败: {e}")
@@ -77,6 +106,27 @@ async def fetch_holiday_data(year: int) -> Optional[Dict[str, Any]]:
     
     logger.error(f"无法获取{year}年节假日数据")
     return None
+
+
+async def _refresh_holiday_data(year: int):
+    """后台刷新指定年份的节假日数据"""
+    import time
+    
+    try:
+        # 获取新数据
+        new_data = await _fetch_holiday_data_sync(year)
+        if new_data:
+            # 更新缓存和时间戳
+            _holiday_cache[year] = new_data
+            _holiday_cache_ts[year] = time.time()
+            logger.info(f"后台刷新{year}年节假日数据成功")
+        else:
+            logger.warning(f"后台刷新{year}年节假日数据失败")
+    except Exception as e:
+        logger.error(f"后台刷新{year}年节假日数据异常: {e}")
+    finally:
+        # 移除刷新中标记
+        _refreshing_years.discard(year)
 
 @mcp.tool()
 async def holiday_info(date: str = None) -> str:
@@ -211,30 +261,36 @@ async def next_holiday(date: str = None) -> str:
         
         # 先查找当前年份的节假日
         holiday_data = await fetch_holiday_data(current_year)
-        if not holiday_data:
-            return '{"error": "无法获取节假日数据"}'
         
         next_holiday_info = None
         
         # 查找当前年份的下一个节假日
-        for day in holiday_data.get('days', []):
-            if day.get('isOffDay', False) and day.get('name'):
-                holiday_date = datetime.strptime(day['date'], "%Y-%m-%d").date()
-                if holiday_date > today:
-                    next_holiday_info = day
-                    break
+        if holiday_data:
+            for day in holiday_data.get('days', []):
+                if day.get('isOffDay', False) and day.get('name'):
+                    holiday_date = datetime.strptime(day['date'], "%Y-%m-%d").date()
+                    if holiday_date > today:
+                        next_holiday_info = day
+                        break
         
-        # 如果当前年份没有找到，查找下一年的第一个节假日
+        # 如果当前年份没有找到，查找下一年的第一个节假日；若数据库未更新则兜底为次年元旦
         if not next_holiday_info:
-            next_year_data = await fetch_holiday_data(current_year + 1)
+            next_year = current_year + 1
+            next_year_data = await fetch_holiday_data(next_year)
             if next_year_data:
                 for day in next_year_data.get('days', []):
                     if day.get('isOffDay', False) and day.get('name'):
                         next_holiday_info = day
                         break
         
+        # 数据库未更新，则使用次年元旦作为兜底
         if not next_holiday_info:
-            return '{"error": "未找到下一个节假日"}'
+                new_year_date_obj = datetime(next_year, 1, 1).date()
+                next_holiday_info = {
+                    "date": new_year_date_obj.strftime("%Y-%m-%d"),
+                    "name": "元旦",
+                    "note": ""
+                }
         
         # 计算距离天数
         holiday_date = datetime.strptime(next_holiday_info['date'], "%Y-%m-%d").date()
