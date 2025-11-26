@@ -344,7 +344,7 @@ async def current_year_work_days() -> str:
                 
                 work_days.append({
                     "date": day['date'],
-                    "name": day['name'] + "-需要上班",
+                    "name": day['name'] + "补班",
                     "note": day.get('note', ''),
                     "weekday_name_en": weekday_name_en
                 })
