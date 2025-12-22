@@ -8,7 +8,6 @@ from fastmcp import FastMCP
 try:
     from utils.logger import setup_logger
     from utils.date_utils import get_weekday
-    from tools.lunar import LunarTools
 except ImportError:
     import logging
     def setup_logger(name):
@@ -18,24 +17,6 @@ except ImportError:
         date_obj = datetime(year, month, day)
         weekdays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
         return {'weekday_name_en': weekdays[date_obj.weekday()]}
-    
-    # 如果导入失败，创建一个简化的LunarTools类
-    class LunarTools:
-        @staticmethod
-        def lunar_to_gregorian(year, month, day, is_leap=False):
-            return {"error": "农历转换模块未安装"}
-        
-        @staticmethod
-        def get_lunar_string(year, month, day):
-            return {"error": "农历转换模块未安装"}
-        
-        @staticmethod
-        def get_24_lunar_feast(year, month):
-            return {"error": "农历转换模块未安装"}
-        
-        @staticmethod
-        def get_8zi(year, month, day, hour=12):
-            return {"error": "农历转换模块未安装"}
 
 # 设置日志
 logger = setup_logger(__name__)
@@ -368,8 +349,8 @@ class LunarTools:
     
     # 农历数据
     LUNAR_DATA = (
-        1198, 2647, 330317, 3366, 3477, 265557, 1386, 2477, 18781, 1198,
-        398491, 2637, 3365, 334501, 2900, 3434, 133485, 2395, 461111, 1175,
+        1198, 2647, 330317, 3366, 3477, 265557, 1386, 2477, 133469, 1198,
+        398491, 2637, 3365, 334501, 2900, 3434, 135898, 2395, 461111, 1175,
         2635, 333387, 1701, 1748, 267701, 694, 2391, 133423, 1175, 396438,
         3402, 3749, 331177, 1453, 694, 201326, 2350, 465197, 3221, 3402,
         400202, 2901, 1386, 267611, 605, 2349, 137515, 2709, 464533, 1738,
@@ -380,9 +361,9 @@ class LunarTools:
         1175, 1611, 200010, 3749, 527717, 1452, 2742, 332397, 2350, 3222,
         268949, 3402, 3493, 133973, 1386, 464219, 605, 2349, 334123, 2709,
         2890, 267946, 2773, 592565, 1210, 2651, 395863, 1323, 2707, 265877,
-        1706, 2773, 18869, 1206, 51799, 2638, 3366, 44691, 3411, 1450,
-        26293, 2413, 92509, 1197, 2637, 55883, 3365, 3410, 44458, 2906,
-        1389, 18779, 1179, 62615, 2635, 2725, 46757, 1746, 2778, 27319
+        1706, 2773, 133557, 1206, 398510, 2638, 3366, 335142, 3411, 1450,
+        200042, 2413, 723293, 1197, 2637, 399947, 3365, 3410, 334676, 2906,
+        1389, 133467, 1179, 464023, 2635, 2725, 333477, 1746, 2778, 199350
     )
     
     # 天干地支
@@ -401,7 +382,7 @@ class LunarTools:
     
     # 农历月份名
     LUNAR_MONTH_NAMES = (
-        "", "正", "二", "三", "四", "五", "六", "七", "八", "九", "十", "十一", "腊"
+        "", "正", "二", "三", "四", "五", "六", "七", "八", "九", "十", "冬", "腊"
     )
     
     @staticmethod
@@ -563,25 +544,40 @@ async def gregorian_to_lunar(date: str) -> str:
             return '{"error": "日期格式错误，请使用YYYY-MM-DD格式"}'
         
         year, month, day = date_obj.year, date_obj.month, date_obj.day
-        lunar_result = LunarTools.gregorian_to_lunar(year, month, day)
         
-        if lunar_result[0] is None:
-            return '{"error": "无法转换为农历"}'
+        # 使用 get_lunar_string 获取详细农历信息
+        result = LunarTools.get_lunar_string(year, month, day)
         
-        lunar_year, lunar_month, lunar_day, is_leap = lunar_result
+        if "error" in result:
+            return json.dumps(result, ensure_ascii=False)
+            
+        # 获取节气信息
+        solar_term = None
+        try:
+            try:
+                from data.solar_terms import get_solar_terms_for_month
+            except ImportError:
+                from .data.solar_terms import get_solar_terms_for_month
+                
+            month_terms = get_solar_terms_for_month(year, month)
+            for term_name, term_day in month_terms:
+                if term_day == day:
+                    solar_term = term_name
+                    break
+        except Exception as e:
+            logger.warning(f"获取节气失败: {e}")
+            
+        result["solar_term"] = solar_term
         
-        # 生成属相
-        zodiac_index = ((lunar_year - 4) % 60) % 12
-        zodiac = LunarTools.ZODIAC[zodiac_index]
-        
-        result = {
-            "gregorian_date": date,
-            "lunar_year": lunar_year,
-            "lunar_month": lunar_month,
-            "lunar_day": lunar_day,
-            "is_leap_month": is_leap,
-            "zodiac": zodiac
-        }
+        # 获取星期信息
+        try:
+            weekdays_cn = ['星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '星期日']
+            weekdays_en = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+            weekday_index = date_obj.weekday()
+            result["weekday_cn"] = weekdays_cn[weekday_index]
+            result["weekday_en"] = weekdays_en[weekday_index]
+        except Exception:
+            pass
         
         import json
         return json.dumps(result, ensure_ascii=False, indent=2)
