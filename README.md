@@ -5,6 +5,7 @@
 ## 🌟 功能特性
 
 - **节假日查询**: 查询中国法定节假日、传统节日和调休安排
+- **月历查询**: 查询指定月份完整日历，包含节假日和调休安排
 - **农历转换**: 公历与农历日期相互转换
 - **农历信息**: 获取详细的农历日期描述，包括生肖、干支等
 - **二十四节气**: 查询二十四节气信息和季节划分
@@ -169,6 +170,41 @@ uvx --from . python -m src.server_fastmcp
     }
   ],
   "total_count": 1
+}
+```
+
+#### `month_calendar`
+查询指定月份的完整日历，包含节假日和调休信息。不指定年份时查询当前年份，不指定月份时查询当前月份。
+
+**参数:**
+- `month`: 月份，1-12
+- `year`: 年份
+
+**返回:**
+```json
+{
+  "year": 2024,
+  "month": 6,
+  "month_name": "2024年6月",
+  "days": [
+    {
+      "date": "2024-06-10",
+      "day": 10,
+      "name": "端午节",
+      "type": "holiday",
+      "is_holiday": true,
+      "is_work_day": false,
+      "note": "法定节假日",
+      "weekday_name_cn": "星期一",
+      "weekday_name_en": "Monday"
+    }
+  ],
+  "weeks": [],
+  "holidays": [],
+  "work_days": [],
+  "total_days": 30,
+  "holiday_count": 1,
+  "work_day_count": 0
 }
 ```
 
