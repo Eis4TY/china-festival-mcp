@@ -1,4 +1,5 @@
 import asyncio
+import calendar
 import httpx
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional, List
@@ -341,6 +342,123 @@ async def current_year_work_days() -> str:
         
     except Exception as e:
         logger.error(f"获取当前年份调休工作日失败: {e}")
+        return f'{{"error": "查询失败: {str(e)}"}}'  
+
+@mcp.tool()
+async def month_calendar(month: int = None, year: int = None) -> str:
+    """查询指定月份的完整日历，包含节假日和调休信息
+    month: 查询月份，1-12，不指定则查询当前月份
+    year: 查询年份，不指定则查询当前年份
+    """
+    try:
+        # 如果没有提供年份和月份，默认使用当前年月
+        current_date = datetime.now()
+        if year is None:
+            year = current_date.year
+        if month is None:
+            month = current_date.month
+        
+        # 验证年份和月份
+        if year < 1:
+            return '{"error": "年份必须是正整数"}'
+        if not (1 <= month <= 12):
+            return '{"error": "月份必须在1-12之间"}'
+        
+        holiday_data = await fetch_holiday_data(year)
+        
+        if not holiday_data:
+            return '{"error": "无法获取节假日数据"}'
+        
+        # 按日期索引节假日和调休数据
+        holiday_map = {}
+        for day in holiday_data.get('days', []):
+            if day.get('date'):
+                holiday_map[day.get('date')] = day
+        
+        weekdays_cn = ['星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '星期日']
+        weekdays_en = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+        
+        _, days_in_month = calendar.monthrange(year, month)
+        days = []
+        weeks = []
+        current_week = []
+        
+        for day_num in range(1, days_in_month + 1):
+            date_obj = datetime(year, month, day_num)
+            date_str = date_obj.strftime("%Y-%m-%d")
+            weekday_index = date_obj.weekday()
+            date_info = holiday_map.get(date_str)
+            
+            if date_info:
+                is_holiday = date_info.get('isOffDay', False)
+                holiday_name = date_info.get('name', '')
+                day_result = {
+                    "date": date_str,
+                    "day": day_num,
+                    "name": holiday_name,
+                    "type": "holiday" if is_holiday else "work",
+                    "is_holiday": is_holiday,
+                    "is_work_day": not is_holiday,
+                    "note": date_info.get('note', ''),
+                    "weekday_name_cn": weekdays_cn[weekday_index],
+                    "weekday_name_en": weekdays_en[weekday_index]
+                }
+            else:
+                # 如果没有特殊安排，判断是否为周末
+                is_weekend = weekday_index >= 5  # 5=周六, 6=周日
+                day_result = {
+                    "date": date_str,
+                    "day": day_num,
+                    "name": " ",
+                    "type": "normal",
+                    "is_holiday": is_weekend,
+                    "is_work_day": not is_weekend,
+                    "note": "周末" if is_weekend else "工作日",
+                    "weekday_name_cn": weekdays_cn[weekday_index],
+                    "weekday_name_en": weekdays_en[weekday_index]
+                }
+            
+            days.append(day_result)
+            
+            # 生成按周排列的完整日历，周一为一周开始
+            if day_num == 1:
+                current_week = [None] * weekday_index
+            current_week.append(day_result)
+            if len(current_week) == 7:
+                weeks.append(current_week)
+                current_week = []
+        
+        if current_week:
+            current_week.extend([None] * (7 - len(current_week)))
+            weeks.append(current_week)
+        
+        holidays = [
+            day for day in days
+            if day.get('is_holiday') and day.get('name') and day.get('name') != " "
+        ]
+        work_days = [
+            day for day in days
+            if day.get('type') == "work"
+        ]
+        
+        result = {
+            "year": year,
+            "month": month,
+            "month_name": f"{year}年{month}月",
+            "days": days,
+            "weeks": weeks,
+            "holidays": holidays,
+            "work_days": work_days,
+            "total_days": days_in_month,
+            "holiday_count": len(holidays),
+            "work_day_count": len(work_days)
+        }
+        
+        import json
+        return json.dumps(result, ensure_ascii=False, indent=2)
+        
+    except Exception as e:
+        logger.error(f"查询月历失败: {e}")
         return f'{{"error": "查询失败: {str(e)}"}}'  
 
 # 农历转换工具类
