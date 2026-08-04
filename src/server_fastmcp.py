@@ -507,70 +507,16 @@ class LunarTools:
     def gregorian_to_lunar(year, month, day):
         """公历转农历"""
         try:
-            # 公历每月前面的天数
-            month_add = (0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334)
-            
-            # 计算到初始时间1901年2月19日的天数：1921-2-19(正月初一)
-            the_date = (year - 1901) * 365 + (year - 1901) // 4 + day + month_add[month - 1] - 38 - 11
-            
-            if the_date <= 0:
+            if (
+                (year, month, day) < (1901, 2, 19)
+                or (year, month, day) > (2051, 2, 10)
+            ):
                 return None, None, None, False
-            
-            # 闰年处理
-            if (year % 4 == 0) and (month > 2):
-                the_date += 1
-            
-            # 计算农历天干、地支、月、日
-            is_end = False
-            m = 0
-            
-            while not is_end:
-                if LunarTools.LUNAR_DATA[m] < 4095:
-                    k = 11
-                else:
-                    k = 12
-                
-                n = k
-                while n >= 0:
-                    bit = LunarTools.LUNAR_DATA[m]
-                    for i in range(1, n + 1):
-                        bit = bit // 2
-                    bit = bit % 2
-                    
-                    if the_date <= (29 + bit):
-                        is_end = True
-                        break
-                    
-                    the_date = the_date - 29 - bit
-                    n = n - 1
-                
-                if is_end:
-                    break
-                m = m + 1
-            
-            cur_year = 1901 + m
-            cur_month = k - n + 1
-            cur_day = the_date
-            
-            if cur_day < 0:
-                return None, None, None, False
-            
-            # 处理闰月
-            embolism = False
-            if k == 12:
-                if cur_month == LunarTools.LUNAR_DATA[m] // 65536 + 1:
-                    cur_month = 1 - cur_month
-                elif cur_month > LunarTools.LUNAR_DATA[m] // 65536 + 1:
-                    cur_month = cur_month - 1
-            
-            if cur_month < 1:
-                lunar_month = -cur_month
-                embolism = True
-            else:
-                lunar_month = cur_month
-                embolism = False
-            
-            return cur_year, lunar_month, cur_day, embolism
+
+            from lunarcalendar import Converter, Solar
+
+            lunar = Converter.Solar2Lunar(Solar(year, month, day))
+            return lunar.year, lunar.month, lunar.day, lunar.isleap
             
         except Exception as e:
             logger.error(f"公历转农历失败: {e}")
@@ -580,20 +526,15 @@ class LunarTools:
     def lunar_to_gregorian(lunar_year, lunar_month, lunar_day, is_leap=False):
         """农历转公历"""
         try:
-            # 从农历年份开始，逐日查找对应的公历日期
-            start_date = datetime(lunar_year, 1, 1)
-            
-            for i in range(400):  # 最多查找400天
-                test_date = start_date + timedelta(days=i)
-                lunar_result = LunarTools.gregorian_to_lunar(test_date.year, test_date.month, test_date.day)
-                
-                if (lunar_result[0] == lunar_year and 
-                    lunar_result[1] == lunar_month and 
-                    lunar_result[2] == lunar_day and 
-                    lunar_result[3] == is_leap):
-                    return test_date.year, test_date.month, test_date.day
-            
-            return None, None, None
+            if not 1901 <= lunar_year <= 2050:
+                return None, None, None
+
+            from lunarcalendar import Converter, Lunar
+
+            solar = Converter.Lunar2Solar(
+                Lunar(lunar_year, lunar_month, lunar_day, isleap=is_leap)
+            )
+            return solar.year, solar.month, solar.day
             
         except Exception as e:
             logger.error(f"农历转公历失败: {e}")
